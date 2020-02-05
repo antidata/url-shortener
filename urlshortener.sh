@@ -1,0 +1,1 @@
+sh target/universal/stage/bin/urlshortener "$@"
