@@ -10,7 +10,7 @@ import qai.urlshortener.system.UrlShortenerSystemData.{UrlShortenerCommand, UrlS
 class UrlShortenerCommandProcessor(workersCount: Int)(implicit urlShortenerDBs: UrlShortenerDBs) extends Actor with ActorLogging {
   // Init Workers
   var workers: Map[Int, ActorRef] = (0 until workersCount).map(i => {
-    i -> this.context.system.actorOf(Props(new UrlShortenerWorker(urlShortenerDBs)), s"UrlShortenerWorkser$i${(new Date()).getTime}")
+    i -> this.context.system.actorOf(Props(new UrlShortenerWorker()), s"UrlShortenerWorkser$i${(new Date()).getTime}")
   }).toMap
 
   def receive: Receive = {
@@ -25,7 +25,7 @@ class UrlShortenerCommandProcessor(workersCount: Int)(implicit urlShortenerDBs: 
   }
 }
 
-private[this] class UrlShortenerWorker(urlShortenerDBs: UrlShortenerDBs) extends Actor with ActorLogging {
+private[this] class UrlShortenerWorker(implicit urlShortenerDBs: UrlShortenerDBs) extends Actor with ActorLogging {
   def receive: Receive = {
     case UrlShortenerCommand(cmd, replyTo) =>
       cmd match {
