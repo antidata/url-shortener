@@ -61,12 +61,17 @@ object UrlShortenerServer extends JsonExtractor with HttpHelpers {
           val worker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.query, promise)))
           worker ! UrlShortenerQuery(GetOriginalUrl(UrlShortenerHelper.baseUrl + pathArr(1)), worker)
           promise.future.map { case result: UrlShortenerResult =>
-            val queryPromise = Promise[UrlShortenerSystemEvent]()
-            val clickWorker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.command, queryPromise))) // Getting original URL means that someone clicked on it, so we save a new click
-            val newShortUrl = result.result.asInstanceOf[StoredShortUrl]
-            clickWorker! UrlShortenerCommand(SaveClick(newShortUrl.id), clickWorker)
-            val locationHeader = getLocationHeader(newShortUrl.originalUrl).getOrElse(getLocationHeader("/404").get)
-            HttpResponse(StatusCodes.PermanentRedirect, Seq(locationHeader))
+            result.result match {
+              case newShortUrl: StoredShortUrl =>
+                val queryPromise = Promise[UrlShortenerSystemEvent]()
+                val clickWorker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.command, queryPromise))) // Getting original URL means that someone clicked on it, so we save a new click
+                clickWorker! UrlShortenerCommand(SaveClick(newShortUrl.id), clickWorker)
+                val locationHeader = getLocationHeader(newShortUrl.originalUrl).getOrElse(getLocationHeader("/404").get)
+                HttpResponse(StatusCodes.PermanentRedirect, Seq(locationHeader))
+
+              case _ => // Log invalid case
+                HttpResponse(404, entity = "Unknown resource!")
+            }
           }
         } else
           Future.successful(HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, s"""{"error":"Url invalid"}""")))
