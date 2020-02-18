@@ -17,7 +17,6 @@ object UrlShortenerData {
   sealed trait Query extends UrlShortenerMessage
   case class GetOriginalUrl(shortUrl: String) extends Query
   case class GetClicksFromShortUrl(shortUrl: String) extends Query
-  case class GetClicksFromId(id: Long) extends Query
 
   // Results
   sealed trait Result extends UrlShortenerMessage

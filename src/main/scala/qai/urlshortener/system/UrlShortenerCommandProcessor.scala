@@ -7,7 +7,7 @@ import qai.urlshortener.data.UrlShortenerData._
 import qai.urlshortener.db.UrlShortenerDBs
 import qai.urlshortener.system.UrlShortenerSystemData.{UrlShortenerCommand, UrlShortenerEvent}
 
-class UrlShortenerCommandProcessor(workersCount: Int, urlShortenerDBs: UrlShortenerDBs) extends Actor with ActorLogging {
+class UrlShortenerCommandProcessor(workersCount: Int)(implicit urlShortenerDBs: UrlShortenerDBs) extends Actor with ActorLogging {
   // Init Workers
   var workers: Map[Int, ActorRef] = (0 until workersCount).map(i => {
     i -> this.context.system.actorOf(Props(new UrlShortenerWorker(urlShortenerDBs)), s"UrlShortenerWorkser$i${(new Date()).getTime}")

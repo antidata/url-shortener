@@ -16,18 +16,18 @@ import qai.urlshortener.system.UrlShortenerHelper
 import qai.urlshortener.system.UrlShortenerSystemData._
 
 import scala.collection.immutable.Seq
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{ExecutionContextExecutor, Future, Promise}
 import scala.util.Try
 
 object UrlShortenerServer {
   implicit val formats = DefaultFormats
 
-  def start(urlShortenerCmd: ActorRef, urlShortenerQuery: ActorRef)= {
-    implicit val system = ActorSystem()
-    implicit val materializer = ActorMaterializer()
+  def start(implicit urlShortenerSystem: UrlShortenerSystem)= {
+    implicit val system: ActorSystem = ActorSystem()
+    implicit val materializer: ActorMaterializer = ActorMaterializer()
 
     // needed for the future map/flatmap in the end
-    implicit val executionContext = system.dispatcher
+    implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
     val requestHandler: HttpRequest => Future[HttpResponse] = {
       case HttpRequest(POST, Uri.Path("/createShortUrl"), _, entity, _) =>
@@ -36,7 +36,7 @@ object UrlShortenerServer {
           .flatMap(json => {
             extractNewUrl(json).map(cns => {
               val promise = Promise[UrlShortenerSystemEvent]()
-              val worker = system.actorOf(Props(new RequestWorker(urlShortenerCmd, promise)))
+              val worker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.command, promise)))
               worker ! UrlShortenerCommand(CreateNewShortUrl(cns.originalUrl, 0L), worker)
               promise.future.map(result => HttpResponse(entity = HttpEntity(ContentTypes.`application/json`,compactRender(Extraction.decompose(result)))))
             }).getOrElse(Future.successful(HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, """{"error":"invalid json"}"""))))
@@ -48,7 +48,7 @@ object UrlShortenerServer {
           .flatMap(json => {
             extractShortUrlClicks(json).map(cns => {
               val promise = Promise[UrlShortenerSystemEvent]()
-              val worker = system.actorOf(Props(new RequestWorker(urlShortenerQuery, promise)))
+              val worker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.query, promise)))
               worker ! UrlShortenerQuery(cns, worker)
               promise.future.map(result => HttpResponse(entity = HttpEntity(ContentTypes.`application/json`,compactRender(Extraction.decompose(result)))))
             }).getOrElse(Future.successful(HttpResponse(entity = HttpEntity(ContentTypes.`application/json`, """{"error":"invalid json"}"""))))
@@ -59,14 +59,14 @@ object UrlShortenerServer {
         val pathArr = uri.path.toString().split("/")
         if(pathArr.size > 1) {
           val promise = Promise[UrlShortenerSystemEvent]()
-          val worker = system.actorOf(Props(new RequestWorker(urlShortenerQuery, promise)))
+          val worker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.query, promise)))
           worker ! UrlShortenerQuery(GetOriginalUrl(UrlShortenerHelper.baseUrl + pathArr(1)), worker)
           promise.future.map(result => {
             val queryPromise = Promise[UrlShortenerSystemEvent]()
-            val clickWorker = system.actorOf(Props(new RequestWorker(urlShortenerCmd, queryPromise))) // Getting original URL means that someone clicked on it, so we save a new click
+            val clickWorker = system.actorOf(Props(new RequestWorker(urlShortenerSystem.command, queryPromise))) // Getting original URL means that someone clicked on it, so we save a new click
             val newShortUrl = result.asInstanceOf[UrlShortenerResult].result.asInstanceOf[StoredShortUrl]
             clickWorker! UrlShortenerCommand(SaveClick(newShortUrl.id), clickWorker)
-            val locationHeader = getLocationHeader(newShortUrl.originalUrl)
+            val locationHeader = getLocationHeader(newShortUrl.originalUrl).getOrElse(getLocationHeader("/404").get)
             HttpResponse(StatusCodes.PermanentRedirect, Seq(locationHeader))
           })
         } else
@@ -93,14 +93,14 @@ object UrlShortenerServer {
     JsonParser.parse(json).extractOpt[GetClicksFromShortUrl]
   }
 
-  def getLocationHeader(originalUrl: String) = {
+  def getLocationHeader(originalUrl: String): Option[HttpHeader] = {
     HttpHeader.parse("location", originalUrl) match {
-      case Ok(header, _) => header
-      case _ => throw new Exception(s"Header invalid")
+      case Ok(header, _) => Some(header)
+      case _ => None
     }
   }
 
-  class RequestWorker(askTo: ActorRef, promise: Promise[UrlShortenerSystemEvent]) extends Actor with ActorLogging {
+  private class RequestWorker(askTo: ActorRef, promise: Promise[UrlShortenerSystemEvent]) extends Actor with ActorLogging {
     import scala.concurrent.ExecutionContext.Implicits.global
 
     context.system.scheduler.scheduleOnce(120.seconds, self, PoisonPill)

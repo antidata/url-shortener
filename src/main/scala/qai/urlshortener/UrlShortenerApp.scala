@@ -1,25 +1,36 @@
 package qai.urlshortener
 
-import akka.actor.{ActorSystem, Props}
-import com.typesafe.config.ConfigFactory
+import akka.actor.{ActorRef, ActorSystem, Props}
+import com.typesafe.config.{Config, ConfigFactory}
 import qai.urlshortener.db.MockDbs
 import qai.urlshortener.http.UrlShortenerServer
+import qai.urlshortener.system.UrlShortenerSystemData.UrlShortenerSystem
 import qai.urlshortener.system.{UrlShortenerCommandProcessor, UrlShortenerQueryProcessor}
 
-object UrlShortenerApp extends App {
-  // Override the configuration of the port when specified as program argument
-  val port = if (args.isEmpty) "2551" else args(0)
+object UrlShortenerApp extends App with UConfig with UrlShortenerAppDb with UrlShortenerAppSystem {
+  UrlShortenerServer.start
+}
 
-  val config = ConfigFactory.parseString(s"akka.remote.netty.tcp.port=$port").
-    withFallback(ConfigFactory.parseString("akka.cluster.roles = [urlshortener]")).
-    withFallback(ConfigFactory.load("urlshortener"))
+trait UConfig {
+  val config: Config = getConfig
 
-  val system = ActorSystem("ClusterSystem", config)
+  private def getConfig =
+    ConfigFactory.parseString(s"akka.remote.netty.tcp.port=2551").
+      withFallback(ConfigFactory.parseString("akka.cluster.roles = [urlshortener]")).
+      withFallback(ConfigFactory.load("urlshortener"))
+}
 
-  val urlShortenerCmd = system.actorOf(Props(new UrlShortenerCommandProcessor(10, MockDbs)), name = "urlShortenerCmdActor")
-  val urlShortenerQuery = system.actorOf(Props(new UrlShortenerQueryProcessor(10, MockDbs)), name = "urlShortenerQueryActor")
+trait UrlShortenerAppDb {
+  implicit val mockDbs: MockDbs.type = MockDbs
+}
 
-//  system.actorOf(Props[MetricsListener], name = "metricsListener")
+trait UrlShortenerAppSystem { self: UConfig with UrlShortenerAppDb =>
+  protected val system: ActorSystem = ActorSystem("ClusterSystem", config)
 
-  UrlShortenerServer.start(urlShortenerCmd, urlShortenerQuery)
+  private val urlShortenerCmd: ActorRef = system.actorOf(Props(new UrlShortenerCommandProcessor(10)), name = "urlShortenerCmdActor")
+  private val urlShortenerQuery: ActorRef = system.actorOf(Props(new UrlShortenerQueryProcessor(10)), name = "urlShortenerQueryActor")
+
+  protected implicit val urlShortenerSystem: UrlShortenerSystem = UrlShortenerSystem(urlShortenerCmd, urlShortenerQuery)
+
+  system.actorOf(Props[MetricsListener], name = "metricsListener")
 }

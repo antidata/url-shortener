@@ -11,4 +11,6 @@ object UrlShortenerSystemData {
   case class UrlShortenerQuery(cmd: Query, replyTo: ActorRef) extends UrlShortenerSystemEvent
   case class UrlShortenerResult(result: Result) extends UrlShortenerSystemEvent
   case class UrlShortenerRejection(reason: String) extends UrlShortenerSystemEvent
+
+  case class UrlShortenerSystem(command: ActorRef, query: ActorRef)
 }

@@ -8,14 +8,9 @@ object MockDbs extends UrlShortenerDBs {
   def getClicksDB: ClicksDB = MockClicksDB
 }
 
-trait UrlShortenerDBs {
-  def getUrlShortenerDB: UrlShortenerDB
-  def getClicksDB: ClicksDB
-}
-
 object MockUrlShortenerDB extends UrlShortenerDB {
-  case class ShortUrl(id: Long, originalUrl: String, shortUrl: String)
-  var urls: List[ShortUrl] = List()
+  private case class ShortUrl(id: Long, originalUrl: String, shortUrl: String)
+  private var urls: List[ShortUrl] = List()
 
   def storeUrl(originalUrl: String, id: Long): ShortUrlCreated = {
     urls.find(_.originalUrl == originalUrl) match {
@@ -41,7 +36,7 @@ object MockUrlShortenerDB extends UrlShortenerDB {
 
   def getLastId(): Long = if(urls.nonEmpty) urls.maxBy(_.id).id else 0L
 
-  var lastId = getLastId()
+  private var lastId = getLastId()
 
   def getNextId(): Long = {
     lastId = lastId + 1
@@ -50,7 +45,7 @@ object MockUrlShortenerDB extends UrlShortenerDB {
 }
 
 object MockClicksDB extends ClicksDB {
-  var clicks: Map[Long, Int] = Map()
+  private var clicks: Map[Long, Int] = Map()
 
   def incrementClicks(id: Long): Int = {
     clicks.find(_._1 == id) match {
